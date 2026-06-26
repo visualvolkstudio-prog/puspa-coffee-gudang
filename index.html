@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=9">
+    <link rel="stylesheet" href="styles.css?v=10">
   </head>
   <body>
     <svg class="icon-sprite" aria-hidden="true">
@@ -212,9 +212,26 @@
               <h2>Riwayat Transaksi</h2>
               <p>Data terbaru berada di bagian atas.</p>
             </div>
-            <button class="ghost-button with-icon" id="exportButton" type="button">
-              <svg class="icon"><use href="#icon-download"></use></svg>Export CSV
-            </button>
+            <div class="history-tools">
+              <div class="period-filters" aria-label="Filter periode transaksi">
+                <label>
+                  Tanggal
+                  <input id="historyDateFilter" type="date">
+                </label>
+                <label>
+                  Bulan
+                  <input id="historyMonthFilter" type="month">
+                </label>
+                <label>
+                  Tahun
+                  <input id="historyYearFilter" type="number" min="2000" max="2100" step="1" placeholder="2026">
+                </label>
+                <button class="ghost-button period-clear-button" id="clearPeriodButton" type="button">Semua</button>
+              </div>
+              <button class="ghost-button with-icon" id="exportButton" type="button">
+                <svg class="icon"><use href="#icon-download"></use></svg>Export CSV
+              </button>
+            </div>
           </div>
 
           <div class="table-wrap">

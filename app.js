@@ -38,6 +38,10 @@ const stockEmpty = document.querySelector("#stockEmpty");
 const historyEmpty = document.querySelector("#historyEmpty");
 const masterEmpty = document.querySelector("#masterEmpty");
 const exportButton = document.querySelector("#exportButton");
+const historyDateFilter = document.querySelector("#historyDateFilter");
+const historyMonthFilter = document.querySelector("#historyMonthFilter");
+const historyYearFilter = document.querySelector("#historyYearFilter");
+const clearPeriodButton = document.querySelector("#clearPeriodButton");
 
 let items = loadItems();
 let transactions = loadTransactions();
@@ -262,6 +266,15 @@ document.addEventListener("click", (event) => {
 searchInput.addEventListener("change", renderStockInfoTable);
 masterStockFilter.addEventListener("change", renderMasterTable);
 masterSearchInput.addEventListener("input", renderMasterTable);
+historyDateFilter.addEventListener("change", renderHistoryTable);
+historyMonthFilter.addEventListener("change", renderHistoryTable);
+historyYearFilter.addEventListener("input", renderHistoryTable);
+clearPeriodButton.addEventListener("click", () => {
+  historyDateFilter.value = "";
+  historyMonthFilter.value = "";
+  historyYearFilter.value = "";
+  renderHistoryTable();
+});
 
 masterTable.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-delete-item-id]");
@@ -326,14 +339,15 @@ exportButton.addEventListener("click", () => {
     return;
   }
 
-  if (transactions.length === 0) {
-    showMessage(formMessage, "Belum ada data untuk diexport.", "error");
+  const exportRows = getFilteredTransactions();
+  if (exportRows.length === 0) {
+    showMessage(formMessage, "Belum ada data periode ini untuk diexport.", "error");
     return;
   }
 
   const rows = [
     ["Tanggal", "Nama Stock", "Jenis", "Qty Masuk", "Qty Keluar", "Satuan", "Catatan"],
-    ...transactions.map((item) => {
+    ...exportRows.map((item) => {
       const masterItem = getItemById(item.itemId);
       return [
         formatDateForCsv(item.date),
@@ -843,7 +857,8 @@ function renderStockInfoTable() {
 }
 
 function renderHistoryTable() {
-  historyTable.innerHTML = transactions.map((item) => {
+  const rows = getFilteredTransactions();
+  historyTable.innerHTML = rows.map((item) => {
     const masterItem = getItemById(item.itemId);
     const actionCell = canManageStock()
       ? `<button class="danger-button" type="button" data-delete-id="${item.id}">${trashIcon()}Hapus</button>`
@@ -863,7 +878,29 @@ function renderHistoryTable() {
     `;
   }).join("");
 
-  historyEmpty.style.display = transactions.length ? "none" : "block";
+  historyEmpty.textContent = hasHistoryFilter() ? "Belum ada transaksi di periode ini." : "Belum ada transaksi.";
+  historyEmpty.style.display = rows.length ? "none" : "block";
+}
+
+function getFilteredTransactions() {
+  const selectedDate = historyDateFilter.value;
+  const selectedMonth = historyMonthFilter.value;
+  const selectedYear = historyYearFilter.value.trim();
+
+  return transactions.filter((transaction) => {
+    if (selectedDate && transaction.date !== selectedDate) return false;
+    if (selectedMonth && !transaction.date.startsWith(selectedMonth)) return false;
+    if (selectedYear && !transaction.date.startsWith(`${selectedYear}-`)) return false;
+    return true;
+  });
+}
+
+function hasHistoryFilter() {
+  return Boolean(
+    historyDateFilter.value ||
+    historyMonthFilter.value ||
+    historyYearFilter.value.trim()
+  );
 }
 
 function getStockMap() {
