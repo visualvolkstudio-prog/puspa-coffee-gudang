@@ -9,6 +9,7 @@ PWA sederhana untuk mencatat nama stock, jenis stock, barang masuk, barang kelua
 - Jenis per stock, seperti Green Bean, Gabah, atau Cherry
 - Tab info: Masuk Barang, Stock Gudang, Keluar Gudang, Sisa Stock
 - Export transaksi ke CSV dengan kolom Qty Masuk dan Qty Keluar terpisah
+- Login Supabase Auth dengan role `admin` dan `staff`
 - PWA dengan manifest, icon, dan service worker
 - Siap disambungkan ke Supabase
 
@@ -47,7 +48,20 @@ PWA/service worker hanya aktif di `localhost` atau HTTPS. Kalau dibuka langsung 
 
 File `config.js` sengaja masuk `.gitignore` supaya key project tidak ikut commit.
 
-Catatan: policy di `supabase/schema.sql` masih dibuat permisif untuk tahap awal. Untuk production, sebaiknya tambahkan login dan batasi akses per user atau per role.
+### Role Login
+
+- `admin`: bisa input nama stock, hapus nama stock, hapus transaksi, dan export CSV.
+- `staff`: bisa login, input transaksi, melihat stock, dan melihat riwayat.
+
+Setelah menjalankan schema, buat user dari Supabase Dashboard > Authentication > Users. User baru otomatis menjadi `staff`. Untuk membuat admin pertama, jalankan SQL ini di Supabase SQL Editor:
+
+```sql
+update public.user_profiles
+set role = 'admin'
+where id = 'USER_ID_DARI_AUTH_USERS';
+```
+
+Ganti `USER_ID_DARI_AUTH_USERS` dengan ID user yang ada di halaman Authentication.
 
 ## Struktur
 

@@ -1,5 +1,13 @@
 create extension if not exists pgcrypto;
 
+create table if not exists public.user_profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  full_name text default '',
+  role text not null default 'staff' check (role in ('admin', 'staff')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists public.stock_items (
   id uuid primary key default gen_random_uuid(),
   name text not null,
@@ -65,51 +73,107 @@ create trigger stock_items_set_updated_at
 before update on public.stock_items
 for each row execute function public.set_updated_at();
 
+drop trigger if exists user_profiles_set_updated_at on public.user_profiles;
+create trigger user_profiles_set_updated_at
+before update on public.user_profiles
+for each row execute function public.set_updated_at();
+
+create or replace function public.handle_new_user()
+returns trigger as $$
+begin
+  insert into public.user_profiles (id, full_name, role)
+  values (
+    new.id,
+    coalesce(new.raw_user_meta_data->>'full_name', ''),
+    coalesce(nullif(new.raw_user_meta_data->>'role', ''), 'staff')
+  )
+  on conflict (id) do nothing;
+
+  return new;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+after insert on auth.users
+for each row execute function public.handle_new_user();
+
+create or replace function public.current_user_role()
+returns text as $$
+  select coalesce(
+    (select role from public.user_profiles where id = auth.uid()),
+    'staff'
+  );
+$$ language sql security definer stable set search_path = public;
+
+insert into public.user_profiles (id, full_name, role)
+select id, coalesce(raw_user_meta_data->>'full_name', ''), 'staff'
+from auth.users
+on conflict (id) do nothing;
+
+alter table public.user_profiles enable row level security;
 alter table public.stock_items enable row level security;
 alter table public.stock_transactions enable row level security;
 
+drop policy if exists "Read own user profile" on public.user_profiles;
+create policy "Read own user profile"
+on public.user_profiles for select
+to authenticated
+using (auth.uid() = id);
+
+drop policy if exists "Update own profile name" on public.user_profiles;
+
 drop policy if exists "Allow anonymous read stock items" on public.stock_items;
-create policy "Allow anonymous read stock items"
-on public.stock_items for select
-to anon
-using (true);
-
 drop policy if exists "Allow anonymous insert stock items" on public.stock_items;
-create policy "Allow anonymous insert stock items"
-on public.stock_items for insert
-to anon
-with check (true);
-
 drop policy if exists "Allow anonymous update stock items" on public.stock_items;
-create policy "Allow anonymous update stock items"
-on public.stock_items for update
-to anon
-using (true)
-with check (true);
-
 drop policy if exists "Allow anonymous delete stock items" on public.stock_items;
-create policy "Allow anonymous delete stock items"
-on public.stock_items for delete
-to anon
+drop policy if exists "Allow authenticated read stock items" on public.stock_items;
+drop policy if exists "Allow admin insert stock items" on public.stock_items;
+drop policy if exists "Allow admin update stock items" on public.stock_items;
+drop policy if exists "Allow admin delete stock items" on public.stock_items;
+
+create policy "Allow authenticated read stock items"
+on public.stock_items for select
+to authenticated
 using (true);
+
+create policy "Allow admin insert stock items"
+on public.stock_items for insert
+to authenticated
+with check (public.current_user_role() = 'admin');
+
+create policy "Allow admin update stock items"
+on public.stock_items for update
+to authenticated
+using (public.current_user_role() = 'admin')
+with check (public.current_user_role() = 'admin');
+
+create policy "Allow admin delete stock items"
+on public.stock_items for delete
+to authenticated
+using (public.current_user_role() = 'admin');
 
 drop policy if exists "Allow anonymous read stock transactions" on public.stock_transactions;
-create policy "Allow anonymous read stock transactions"
-on public.stock_transactions for select
-to anon
-using (true);
-
 drop policy if exists "Allow anonymous insert stock transactions" on public.stock_transactions;
-create policy "Allow anonymous insert stock transactions"
-on public.stock_transactions for insert
-to anon
-with check (true);
-
 drop policy if exists "Allow anonymous delete stock transactions" on public.stock_transactions;
-create policy "Allow anonymous delete stock transactions"
-on public.stock_transactions for delete
-to anon
+drop policy if exists "Allow authenticated read stock transactions" on public.stock_transactions;
+drop policy if exists "Allow staff insert stock transactions" on public.stock_transactions;
+drop policy if exists "Allow admin delete stock transactions" on public.stock_transactions;
+
+create policy "Allow authenticated read stock transactions"
+on public.stock_transactions for select
+to authenticated
 using (true);
+
+create policy "Allow staff insert stock transactions"
+on public.stock_transactions for insert
+to authenticated
+with check (public.current_user_role() in ('admin', 'staff'));
+
+create policy "Allow admin delete stock transactions"
+on public.stock_transactions for delete
+to authenticated
+using (public.current_user_role() = 'admin');
 
 do $$
 begin

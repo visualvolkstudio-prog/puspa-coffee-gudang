@@ -1,6 +1,15 @@
 const ITEMS_KEY = "gudang-puspa-items";
 const TRANSACTIONS_KEY = "gudang-puspa-transactions";
 
+const appHeader = document.querySelector("#appHeader");
+const appMain = document.querySelector("#appMain");
+const authScreen = document.querySelector("#authScreen");
+const authForm = document.querySelector("#authForm");
+const authEmailInput = document.querySelector("#authEmail");
+const authPasswordInput = document.querySelector("#authPassword");
+const authMessage = document.querySelector("#authMessage");
+const roleBadge = document.querySelector("#roleBadge");
+const logoutButton = document.querySelector("#logoutButton");
 const mainTabs = document.querySelectorAll("[data-main-tab]");
 const stockForm = document.querySelector("#stockForm");
 const transactionForm = document.querySelector("#transactionForm");
@@ -34,6 +43,10 @@ let items = loadItems();
 let transactions = loadTransactions();
 let supabaseClient = null;
 let syncTimer = null;
+let currentSession = null;
+let currentRole = "admin";
+let isSupabaseMode = false;
+let realtimeChannel = null;
 
 migrateTransactionsToItems();
 dateInput.value = getToday();
@@ -43,15 +56,62 @@ initializeSupabase();
 
 mainTabs.forEach((button) => {
   button.addEventListener("click", () => {
+    if (button.dataset.mainTab === "master" && !canManageStock()) {
+      showMessage(formMessage, "Role staff tidak bisa membuka Pengaturan Stock.", "error");
+      return;
+    }
+
     mainTabs.forEach((tab) => tab.classList.toggle("active", tab === button));
     document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.remove("active"));
     document.querySelector(`#${button.dataset.mainTab}Panel`).classList.add("active");
   });
 });
 
+authForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  if (!supabaseClient) {
+    showMessage(authMessage, "Supabase belum tersambung.", "error");
+    return;
+  }
+
+  const email = cleanText(authEmailInput.value);
+  const password = authPasswordInput.value;
+  if (!email || !password) {
+    showMessage(authMessage, "Isi email dan password.", "error");
+    return;
+  }
+
+  const submitButton = authForm.querySelector("button[type='submit']");
+  submitButton.disabled = true;
+  submitButton.textContent = "Masuk...";
+
+  const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+  submitButton.disabled = false;
+  submitButton.innerHTML = '<svg class="icon"><use href="#icon-user"></use></svg>Masuk';
+
+  if (error) {
+    showMessage(authMessage, `Login gagal: ${error.message}`, "error");
+    return;
+  }
+
+  authPasswordInput.value = "";
+  await handleAuthenticatedSession(data.session);
+});
+
+logoutButton.addEventListener("click", async () => {
+  if (!supabaseClient) return;
+  await supabaseClient.auth.signOut();
+  showLoginScreen();
+});
 
 stockForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+
+  if (!canManageStock()) {
+    showMessage(stockMessage, "Hanya admin yang bisa menyimpan nama stock.", "error");
+    return;
+  }
 
   const name = cleanText(stockNameInput.value);
   const category = cleanText(stockCategoryInput.value);
@@ -207,6 +267,11 @@ masterTable.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-delete-item-id]");
   if (!button) return;
 
+  if (!canManageStock()) {
+    showMessage(stockMessage, "Hanya admin yang bisa menghapus nama stock.", "error");
+    return;
+  }
+
   const item = getItemById(button.dataset.deleteItemId);
   if (!item) return;
 
@@ -235,6 +300,11 @@ historyTable.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-delete-id]");
   if (!button) return;
 
+  if (!canManageStock()) {
+    showMessage(formMessage, "Hanya admin yang bisa menghapus transaksi.", "error");
+    return;
+  }
+
   const transaction = transactions.find((item) => item.id === button.dataset.deleteId);
   if (!confirm(`Hapus transaksi ${transaction?.itemName || "ini"}?`)) return;
 
@@ -251,6 +321,11 @@ historyTable.addEventListener("click", async (event) => {
 });
 
 exportButton.addEventListener("click", () => {
+  if (!canManageStock()) {
+    showMessage(formMessage, "Hanya admin yang bisa export CSV.", "error");
+    return;
+  }
+
   if (transactions.length === 0) {
     showMessage(formMessage, "Belum ada data untuk diexport.", "error");
     return;
@@ -308,15 +383,75 @@ function saveTransactions() {
 
 async function initializeSupabase() {
   const config = await loadSupabaseConfig();
-  if (!config) return;
+  if (!config) {
+    applyRoleAccess();
+    return;
+  }
 
+  isSupabaseMode = true;
   supabaseClient = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
+  logoutButton.classList.remove("app-hidden");
+
+  supabaseClient.auth.onAuthStateChange((event, session) => {
+    if (event === "SIGNED_OUT" || !session) {
+      showLoginScreen();
+      return;
+    }
+
+    if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+      handleAuthenticatedSession(session).catch((error) => {
+        showMessage(authMessage, `Gagal memuat akun: ${error.message}`, "error");
+      });
+    }
+  });
+
+  const { data, error } = await supabaseClient.auth.getSession();
+  if (error || !data.session) {
+    showLoginScreen();
+    return;
+  }
+
+  await handleAuthenticatedSession(data.session);
+}
+
+async function handleAuthenticatedSession(session) {
+  if (!session) {
+    showLoginScreen();
+    return;
+  }
+
+  currentSession = session;
+  currentRole = await loadUserRole(session.user.id);
+  showAppScreen();
+  await startSupabaseSync();
+}
+
+async function loadUserRole(userId) {
+  if (!supabaseClient || !userId) return "staff";
+
+  const { data, error } = await supabaseClient
+    .from("user_profiles")
+    .select("role")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) {
+    console.warn("Role profile unavailable, using staff role.", error);
+    return "staff";
+  }
+
+  return data?.role === "admin" ? "admin" : "staff";
+}
+
+async function startSupabaseSync() {
+  if (!supabaseClient || !currentSession) return;
+
   const localItems = [...items];
   const localTransactions = [...transactions];
 
   try {
     await syncFromSupabase();
-    if (!items.length && localItems.length) {
+    if (!items.length && localItems.length && canManageStock()) {
       items = localItems;
       transactions = localTransactions;
       await pushLocalDataToSupabase();
@@ -326,6 +461,44 @@ async function initializeSupabase() {
   } catch (error) {
     console.warn("Supabase sync failed, using local data.", error);
   }
+}
+
+function showLoginScreen() {
+  currentSession = null;
+  currentRole = "staff";
+  appHeader.classList.add("app-hidden");
+  appMain.classList.add("app-hidden");
+  authScreen.classList.remove("app-hidden");
+  applyRoleAccess();
+}
+
+function showAppScreen() {
+  authScreen.classList.add("app-hidden");
+  appHeader.classList.remove("app-hidden");
+  appMain.classList.remove("app-hidden");
+  applyRoleAccess();
+}
+
+function applyRoleAccess() {
+  const isAdmin = canManageStock();
+  roleBadge.textContent = isSupabaseMode ? (isAdmin ? "Admin" : "Staff") : "Lokal";
+  roleBadge.title = isAdmin ? "Akses penuh" : "Input transaksi dan lihat data";
+
+  document.querySelectorAll("[data-main-tab='master']").forEach((button) => {
+    button.classList.toggle("role-locked", !isAdmin);
+    button.disabled = !isAdmin;
+  });
+
+  exportButton.classList.toggle("role-locked", !isAdmin);
+
+  if (!isAdmin && document.querySelector("#masterPanel").classList.contains("active")) {
+    const dashboardButton = document.querySelector("[data-main-tab='dashboard']");
+    dashboardButton?.click();
+  }
+}
+
+function canManageStock() {
+  return currentRole === "admin";
 }
 
 async function loadSupabaseConfig() {
@@ -382,7 +555,11 @@ async function syncFromSupabase() {
 function subscribeToSupabaseChanges() {
   if (!supabaseClient) return;
 
-  supabaseClient
+  if (realtimeChannel) {
+    supabaseClient.removeChannel(realtimeChannel);
+  }
+
+  realtimeChannel = supabaseClient
     .channel("puspa-stock-changes")
     .on("postgres_changes", { event: "*", schema: "public", table: "stock_items" }, scheduleSupabaseSync)
     .on("postgres_changes", { event: "*", schema: "public", table: "stock_transactions" }, scheduleSupabaseSync)
@@ -536,6 +713,7 @@ function render() {
   renderMasterTable();
   renderStockInfoTable();
   renderHistoryTable();
+  applyRoleAccess();
 }
 
 function renderStockNameOptions() {
@@ -614,6 +792,7 @@ function renderMasterTable() {
   const selectedItemId = masterStockFilter.value;
   const query = masterSearchInput.value.trim().toLowerCase();
   const stockMap = getStockMap();
+  const actionHeading = canManageStock() ? "Aksi" : "";
   const rows = [...items]
     .filter((item) => !selectedItemId || item.id === selectedItemId)
     .filter((item) => `${item.name} ${item.category}`.toLowerCase().includes(query))
@@ -621,12 +800,16 @@ function renderMasterTable() {
 
   masterTable.innerHTML = rows.map((item) => {
     const stock = stockMap.get(item.id)?.stock || 0;
+    const actionCell = canManageStock()
+      ? `<button class="danger-button" type="button" data-delete-item-id="${item.id}">${trashIcon()}Hapus</button>`
+      : "";
+
     return `
       <tr>
         <td data-label="Nama Stock"><strong>${escapeHtml(item.name)}</strong></td>
         <td data-label="Jenis">${escapeHtml(item.category)}</td>
         <td data-label="Sisa" class="stock-number">${stock} ${escapeHtml(item.unit)}</td>
-        <td data-label="Aksi"><button class="danger-button" type="button" data-delete-item-id="${item.id}">${trashIcon()}Hapus</button></td>
+        <td data-label="${actionHeading}">${actionCell}</td>
       </tr>
     `;
   }).join("");
@@ -662,6 +845,10 @@ function renderStockInfoTable() {
 function renderHistoryTable() {
   historyTable.innerHTML = transactions.map((item) => {
     const masterItem = getItemById(item.itemId);
+    const actionCell = canManageStock()
+      ? `<button class="danger-button" type="button" data-delete-id="${item.id}">${trashIcon()}Hapus</button>`
+      : "";
+
     return `
       <tr>
         <td data-label="Tanggal">${formatDate(item.date)}</td>
@@ -671,7 +858,7 @@ function renderHistoryTable() {
         <td data-label="Qty Keluar">${item.type === "out" ? item.quantity : "-"}</td>
         <td data-label="Satuan">${escapeHtml(masterItem?.unit || item.unit)}</td>
         <td data-label="Catatan">${escapeHtml(item.note || "-")}</td>
-        <td data-label="Aksi"><button class="danger-button" type="button" data-delete-id="${item.id}">${trashIcon()}Hapus</button></td>
+        <td data-label="Aksi">${actionCell}</td>
       </tr>
     `;
   }).join("");

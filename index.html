@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=8">
+    <link rel="stylesheet" href="styles.css?v=9">
   </head>
   <body>
     <svg class="icon-sprite" aria-hidden="true">
@@ -65,9 +65,43 @@
         <path d="m21 21-4.3-4.3"></path>
         <circle cx="11" cy="11" r="7"></circle>
       </symbol>
+      <symbol id="icon-user" viewBox="0 0 24 24">
+        <path d="M20 21a8 8 0 0 0-16 0"></path>
+        <circle cx="12" cy="7" r="4"></circle>
+      </symbol>
+      <symbol id="icon-log-out" viewBox="0 0 24 24">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+        <path d="m16 17 5-5-5-5"></path>
+        <path d="M21 12H9"></path>
+      </symbol>
     </svg>
 
-    <header class="topbar">
+    <section class="auth-screen app-hidden" id="authScreen" aria-label="Login">
+      <form class="auth-card" id="authForm">
+        <img src="assets/icon-192.png" alt="Logo Coffee Puspa">
+        <div class="panel-heading">
+          <h1>PUSPA COFFEE</h1>
+          <p>Masuk untuk mengelola data gudang sesuai role akun.</p>
+        </div>
+
+        <label>
+          Email
+          <input id="authEmail" name="email" type="email" autocomplete="email" placeholder="nama@email.com" required>
+        </label>
+
+        <label>
+          Password
+          <input id="authPassword" name="password" type="password" autocomplete="current-password" placeholder="Password" required>
+        </label>
+
+        <button class="primary-button with-icon" type="submit">
+          <svg class="icon"><use href="#icon-user"></use></svg>Masuk
+        </button>
+        <p class="form-message" id="authMessage" role="status"></p>
+      </form>
+    </section>
+
+    <header class="topbar" id="appHeader">
       <div class="brand">
         <img src="assets/icon-192.png" alt="Logo Coffee Puspa">
         <div>
@@ -82,9 +116,15 @@
           <svg class="icon"><use href="#icon-edit"></use></svg>Pengaturan Stock
         </button>
       </nav>
+      <div class="header-actions">
+        <span class="role-badge" id="roleBadge">Lokal</span>
+        <button class="logout-button app-hidden" id="logoutButton" type="button" aria-label="Keluar">
+          <svg class="icon"><use href="#icon-log-out"></use></svg>
+        </button>
+      </div>
     </header>
 
-    <main class="app-shell">
+    <main class="app-shell" id="appMain">
 
       <!-- ═══════════════ DASHBOARD ═══════════════ -->
       <section class="tab-panel active" id="dashboardPanel">
