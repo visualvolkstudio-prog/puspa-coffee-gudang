@@ -39,8 +39,11 @@ PWA/service worker hanya aktif di `localhost` atau HTTPS. Kalau dibuka langsung 
 1. Buat project Supabase.
 2. Buka SQL Editor.
 3. Jalankan isi file `supabase/schema.sql`.
-4. Duplikasi `config.example.js` menjadi `config.js`.
+4. Untuk lokal, duplikasi `config.example.js` menjadi `config.js`.
 5. Isi `supabaseUrl` dan `supabaseAnonKey` dari dashboard Supabase.
+6. Untuk Vercel, isi Environment Variables:
+   - `SUPABASE_URL`
+   - `SUPABASE_ANON_KEY`
 
 File `config.js` sengaja masuk `.gitignore` supaya key project tidak ikut commit.
 

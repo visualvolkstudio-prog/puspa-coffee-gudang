@@ -32,11 +32,14 @@ const exportButton = document.querySelector("#exportButton");
 
 let items = loadItems();
 let transactions = loadTransactions();
+let supabaseClient = null;
+let syncTimer = null;
 
 migrateTransactionsToItems();
 dateInput.value = getToday();
 render();
 registerServiceWorker();
+initializeSupabase();
 
 mainTabs.forEach((button) => {
   button.addEventListener("click", () => {
@@ -47,7 +50,7 @@ mainTabs.forEach((button) => {
 });
 
 
-stockForm.addEventListener("submit", (event) => {
+stockForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
   const name = cleanText(stockNameInput.value);
@@ -75,23 +78,39 @@ stockForm.addEventListener("submit", (event) => {
       };
     });
 
-    saveItems();
-    saveTransactions();
+    try {
+      await persistStockItem(existingItem);
+      saveTransactions();
+    } catch (error) {
+      showMessage(stockMessage, `Gagal menyimpan ke Supabase: ${error.message}`, "error");
+      return;
+    }
+
     stockForm.reset();
     showMessage(stockMessage, "Nama stock berhasil diperbarui.", "success");
     render();
     return;
   }
 
-  items.push({
+  const newItem = {
     id: createId(),
     name,
     category,
     unit,
     createdAt: new Date().toISOString()
-  });
+  };
 
-  saveItems();
+  items.push(newItem);
+  try {
+    await persistStockItem(newItem);
+  } catch (error) {
+    items = items.filter((item) => item.id !== newItem.id);
+    saveItems();
+    showMessage(stockMessage, `Gagal menyimpan ke Supabase: ${error.message}`, "error");
+    render();
+    return;
+  }
+
   stockForm.reset();
   showMessage(stockMessage, "Nama stock berhasil disimpan.", "success");
   render();
@@ -105,7 +124,7 @@ stockNameInput.addEventListener("change", () => {
   stockUnitInput.value = item.unit;
 });
 
-transactionForm.addEventListener("submit", (event) => {
+transactionForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
   const itemId = itemNameInput.value;
@@ -126,7 +145,7 @@ transactionForm.addEventListener("submit", (event) => {
     return;
   }
 
-  transactions.unshift({
+  const newTransaction = {
     id: createId(),
     itemId: item.id,
     itemName: item.name,
@@ -137,9 +156,19 @@ transactionForm.addEventListener("submit", (event) => {
     date,
     note,
     createdAt: new Date().toISOString()
-  });
+  };
 
-  saveTransactions();
+  transactions.unshift(newTransaction);
+  try {
+    await persistTransaction(newTransaction);
+  } catch (error) {
+    transactions = transactions.filter((transaction) => transaction.id !== newTransaction.id);
+    saveTransactions();
+    showMessage(formMessage, `Gagal menyimpan ke Supabase: ${error.message}`, "error");
+    render();
+    return;
+  }
+
   transactionForm.reset();
   itemSearchInput.value = "";
   dateInput.value = getToday();
@@ -174,7 +203,7 @@ searchInput.addEventListener("change", renderStockInfoTable);
 masterStockFilter.addEventListener("change", renderMasterTable);
 masterSearchInput.addEventListener("input", renderMasterTable);
 
-masterTable.addEventListener("click", (event) => {
+masterTable.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-delete-item-id]");
   if (!button) return;
 
@@ -188,6 +217,13 @@ masterTable.addEventListener("click", (event) => {
 
   if (!confirm(message)) return;
 
+  try {
+    await deleteStockItem(item.id);
+  } catch (error) {
+    showMessage(stockMessage, `Gagal menghapus dari Supabase: ${error.message}`, "error");
+    return;
+  }
+
   items = items.filter((stockItem) => stockItem.id !== item.id);
   transactions = transactions.filter((transaction) => transaction.itemId !== item.id);
   saveItems();
@@ -195,12 +231,19 @@ masterTable.addEventListener("click", (event) => {
   render();
 });
 
-historyTable.addEventListener("click", (event) => {
+historyTable.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-delete-id]");
   if (!button) return;
 
   const transaction = transactions.find((item) => item.id === button.dataset.deleteId);
   if (!confirm(`Hapus transaksi ${transaction?.itemName || "ini"}?`)) return;
+
+  try {
+    await deleteTransaction(button.dataset.deleteId);
+  } catch (error) {
+    showMessage(formMessage, `Gagal menghapus dari Supabase: ${error.message}`, "error");
+    return;
+  }
 
   transactions = transactions.filter((item) => item.id !== button.dataset.deleteId);
   saveTransactions();
@@ -261,6 +304,192 @@ function saveItems() {
 
 function saveTransactions() {
   localStorage.setItem(TRANSACTIONS_KEY, JSON.stringify(transactions));
+}
+
+async function initializeSupabase() {
+  const config = await loadSupabaseConfig();
+  if (!config) return;
+
+  supabaseClient = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
+  const localItems = [...items];
+  const localTransactions = [...transactions];
+
+  try {
+    await syncFromSupabase();
+    if (!items.length && localItems.length) {
+      items = localItems;
+      transactions = localTransactions;
+      await pushLocalDataToSupabase();
+      await syncFromSupabase();
+    }
+    subscribeToSupabaseChanges();
+  } catch (error) {
+    console.warn("Supabase sync failed, using local data.", error);
+  }
+}
+
+async function loadSupabaseConfig() {
+  const localConfig = window.PUSPA_CONFIG || {};
+  if (hasSupabaseConfig(localConfig)) return localConfig;
+
+  try {
+    const response = await fetch("/api/supabase-config", { cache: "no-store" });
+    if (!response.ok) return null;
+
+    const remoteConfig = await response.json();
+    if (hasSupabaseConfig(remoteConfig)) return remoteConfig;
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function hasSupabaseConfig(config) {
+  return Boolean(
+    window.supabase &&
+    config?.supabaseUrl &&
+    config?.supabaseAnonKey &&
+    !config.supabaseUrl.includes("YOUR_PROJECT_ID") &&
+    !config.supabaseAnonKey.includes("YOUR_SUPABASE")
+  );
+}
+
+async function syncFromSupabase() {
+  if (!supabaseClient) return;
+
+  const { data: itemRows, error: itemError } = await supabaseClient
+    .from("stock_items")
+    .select("id,name,jenis,unit,created_at")
+    .order("name", { ascending: true });
+
+  if (itemError) throw itemError;
+
+  const { data: transactionRows, error: transactionError } = await supabaseClient
+    .from("stock_transactions")
+    .select("id,item_id,type,quantity,note,transaction_date,created_at")
+    .order("created_at", { ascending: false });
+
+  if (transactionError) throw transactionError;
+
+  items = (itemRows || []).map(mapStockItemFromDb);
+  transactions = (transactionRows || []).map(mapTransactionFromDb);
+  saveItems();
+  saveTransactions();
+  render();
+}
+
+function subscribeToSupabaseChanges() {
+  if (!supabaseClient) return;
+
+  supabaseClient
+    .channel("puspa-stock-changes")
+    .on("postgres_changes", { event: "*", schema: "public", table: "stock_items" }, scheduleSupabaseSync)
+    .on("postgres_changes", { event: "*", schema: "public", table: "stock_transactions" }, scheduleSupabaseSync)
+    .subscribe();
+}
+
+function scheduleSupabaseSync() {
+  window.clearTimeout(syncTimer);
+  syncTimer = window.setTimeout(() => {
+    syncFromSupabase().catch((error) => console.warn("Supabase realtime sync failed.", error));
+  }, 250);
+}
+
+async function persistStockItem(item) {
+  saveItems();
+  if (!supabaseClient) return;
+
+  const { error } = await supabaseClient.from("stock_items").upsert(mapStockItemToDb(item));
+  if (error) throw error;
+}
+
+async function persistTransaction(transaction) {
+  saveTransactions();
+  if (!supabaseClient) return;
+
+  const { error } = await supabaseClient.from("stock_transactions").upsert(mapTransactionToDb(transaction));
+  if (error) throw error;
+}
+
+async function deleteStockItem(itemId) {
+  if (!supabaseClient) return;
+
+  const { error } = await supabaseClient.from("stock_items").delete().eq("id", itemId);
+  if (error) throw error;
+}
+
+async function deleteTransaction(transactionId) {
+  if (!supabaseClient) return;
+
+  const { error } = await supabaseClient.from("stock_transactions").delete().eq("id", transactionId);
+  if (error) throw error;
+}
+
+async function pushLocalDataToSupabase() {
+  if (!supabaseClient) return;
+
+  if (items.length) {
+    const { error } = await supabaseClient
+      .from("stock_items")
+      .upsert(items.map(mapStockItemToDb));
+    if (error) throw error;
+  }
+
+  if (transactions.length) {
+    const { error } = await supabaseClient
+      .from("stock_transactions")
+      .upsert(transactions.map(mapTransactionToDb));
+    if (error) throw error;
+  }
+}
+
+function mapStockItemToDb(item) {
+  return {
+    id: item.id,
+    name: item.name,
+    jenis: item.category,
+    unit: item.unit,
+    created_at: item.createdAt || new Date().toISOString()
+  };
+}
+
+function mapStockItemFromDb(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    category: row.jenis,
+    unit: row.unit,
+    createdAt: row.created_at
+  };
+}
+
+function mapTransactionToDb(transaction) {
+  return {
+    id: transaction.id,
+    item_id: transaction.itemId,
+    type: transaction.type,
+    quantity: transaction.quantity,
+    note: transaction.note || "",
+    transaction_date: transaction.date,
+    created_at: transaction.createdAt || new Date().toISOString()
+  };
+}
+
+function mapTransactionFromDb(row) {
+  const item = getItemById(row.item_id);
+  return {
+    id: row.id,
+    itemId: row.item_id,
+    itemName: item?.name || "",
+    category: item?.category || "",
+    type: row.type,
+    quantity: row.quantity,
+    unit: item?.unit || "",
+    date: row.transaction_date,
+    note: row.note || "",
+    createdAt: row.created_at
+  };
 }
 
 function migrateTransactionsToItems() {

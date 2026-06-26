@@ -10,6 +10,23 @@ create table if not exists public.stock_items (
   unique (name)
 );
 
+alter table public.stock_items add column if not exists jenis text;
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'stock_items'
+      and column_name = 'category'
+  ) then
+    execute 'update public.stock_items set jenis = category where jenis is null';
+  end if;
+end;
+$$;
+update public.stock_items set jenis = 'Umum' where jenis is null;
+alter table public.stock_items alter column jenis set not null;
+alter table public.stock_items drop column if exists category;
 alter table public.stock_items drop column if exists low_stock_limit;
 
 create table if not exists public.stock_transactions (
