@@ -1,5 +1,10 @@
 const ITEMS_KEY = "gudang-puspa-items";
 const TRANSACTIONS_KEY = "gudang-puspa-transactions";
+const LOCAL_SESSION_KEY = "gudang-puspa-local-session";
+const LOCAL_USERS = [
+  { email: "admin@puspa.local", password: "admin123", role: "admin" },
+  { email: "staff@puspa.local", password: "staff123", role: "staff" }
+];
 
 const appHeader = document.querySelector("#appHeader");
 const appMain = document.querySelector("#appMain");
@@ -7,6 +12,7 @@ const authScreen = document.querySelector("#authScreen");
 const authForm = document.querySelector("#authForm");
 const authEmailInput = document.querySelector("#authEmail");
 const authPasswordInput = document.querySelector("#authPassword");
+const authHint = document.querySelector("#authHint");
 const authMessage = document.querySelector("#authMessage");
 const roleBadge = document.querySelector("#roleBadge");
 const logoutButton = document.querySelector("#logoutButton");
@@ -42,13 +48,15 @@ const historyDateFilter = document.querySelector("#historyDateFilter");
 const historyMonthFilter = document.querySelector("#historyMonthFilter");
 const historyYearFilter = document.querySelector("#historyYearFilter");
 const clearPeriodButton = document.querySelector("#clearPeriodButton");
+const backupButton = document.querySelector("#backupButton");
+const restoreInput = document.querySelector("#restoreInput");
 
 let items = loadItems();
 let transactions = loadTransactions();
 let supabaseClient = null;
 let syncTimer = null;
 let currentSession = null;
-let currentRole = "admin";
+let currentRole = "staff";
 let isSupabaseMode = false;
 let realtimeChannel = null;
 
@@ -74,11 +82,6 @@ mainTabs.forEach((button) => {
 authForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
-  if (!supabaseClient) {
-    showMessage(authMessage, "Supabase belum tersambung.", "error");
-    return;
-  }
-
   const email = cleanText(authEmailInput.value);
   const password = authPasswordInput.value;
   if (!email || !password) {
@@ -90,10 +93,24 @@ authForm.addEventListener("submit", async (event) => {
   submitButton.disabled = true;
   submitButton.textContent = "Masuk...";
 
+  if (!supabaseClient) {
+    const didLogin = loginLocalUser(email, password);
+    submitButton.disabled = false;
+    submitButton.innerHTML = '<svg class="icon"><use href="#icon-user"></use></svg>Masuk';
+
+    if (!didLogin) {
+      showMessage(authMessage, "Login lokal gagal. Cek email dan password.", "error");
+      return;
+    }
+
+    authPasswordInput.value = "";
+    showAppScreen();
+    return;
+  }
+
   const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
   submitButton.disabled = false;
   submitButton.innerHTML = '<svg class="icon"><use href="#icon-user"></use></svg>Masuk';
-
   if (error) {
     showMessage(authMessage, `Login gagal: ${error.message}`, "error");
     return;
@@ -104,8 +121,11 @@ authForm.addEventListener("submit", async (event) => {
 });
 
 logoutButton.addEventListener("click", async () => {
-  if (!supabaseClient) return;
-  await supabaseClient.auth.signOut();
+  if (supabaseClient) {
+    await supabaseClient.auth.signOut();
+  } else {
+    localStorage.removeItem(LOCAL_SESSION_KEY);
+  }
   showLoginScreen();
 });
 
@@ -275,6 +295,8 @@ clearPeriodButton.addEventListener("click", () => {
   historyYearFilter.value = "";
   renderHistoryTable();
 });
+backupButton.addEventListener("click", exportDatabaseBackup);
+restoreInput.addEventListener("change", importDatabaseBackup);
 
 masterTable.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-delete-item-id]");
@@ -395,10 +417,76 @@ function saveTransactions() {
   localStorage.setItem(TRANSACTIONS_KEY, JSON.stringify(transactions));
 }
 
+function exportDatabaseBackup() {
+  if (!canManageStock()) {
+    showMessage(stockMessage, "Hanya admin yang bisa backup data.", "error");
+    return;
+  }
+
+  const payload = {
+    app: "puspa-coffee-gudang",
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    items,
+    transactions
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `backup-puspa-coffee-${getToday()}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+  showMessage(stockMessage, "Backup data berhasil dibuat.", "success");
+}
+
+async function importDatabaseBackup(event) {
+  const file = event.target.files?.[0];
+  event.target.value = "";
+  if (!file) return;
+
+  if (!canManageStock()) {
+    showMessage(stockMessage, "Hanya admin yang bisa import data.", "error");
+    return;
+  }
+
+  try {
+    const payload = JSON.parse(await file.text());
+    if (!Array.isArray(payload.items) || !Array.isArray(payload.transactions)) {
+      throw new Error("Format backup tidak sesuai.");
+    }
+
+    if (!confirm("Import data akan mengganti data stock dan transaksi saat ini. Lanjutkan?")) return;
+
+    items = payload.items;
+    transactions = payload.transactions;
+    saveItems();
+    saveTransactions();
+
+    if (supabaseClient && currentSession) {
+      await pushLocalDataToSupabase();
+      await syncFromSupabase();
+    }
+
+    render();
+    showMessage(stockMessage, "Import data berhasil.", "success");
+  } catch (error) {
+    showMessage(stockMessage, `Import gagal: ${error.message}`, "error");
+  }
+}
+
 async function initializeSupabase() {
   const config = await loadSupabaseConfig();
   if (!config) {
-    applyRoleAccess();
+    isSupabaseMode = false;
+    const localSession = loadLocalSession();
+    if (localSession) {
+      currentSession = localSession;
+      currentRole = localSession.role;
+      showAppScreen();
+    } else {
+      showLoginScreen();
+    }
     return;
   }
 
@@ -483,6 +571,10 @@ function showLoginScreen() {
   appHeader.classList.add("app-hidden");
   appMain.classList.add("app-hidden");
   authScreen.classList.remove("app-hidden");
+  logoutButton.classList.add("app-hidden");
+  authHint.textContent = isSupabaseMode
+    ? "Gunakan akun yang dibuat di Supabase Authentication."
+    : "Mode lokal: admin@puspa.local / admin123 atau staff@puspa.local / staff123";
   applyRoleAccess();
 }
 
@@ -490,12 +582,15 @@ function showAppScreen() {
   authScreen.classList.add("app-hidden");
   appHeader.classList.remove("app-hidden");
   appMain.classList.remove("app-hidden");
+  logoutButton.classList.remove("app-hidden");
+  render();
   applyRoleAccess();
 }
 
 function applyRoleAccess() {
   const isAdmin = canManageStock();
-  roleBadge.textContent = isSupabaseMode ? (isAdmin ? "Admin" : "Staff") : "Lokal";
+  const modeLabel = isSupabaseMode ? "" : " Lokal";
+  roleBadge.textContent = `${isAdmin ? "Admin" : "Staff"}${modeLabel}`;
   roleBadge.title = isAdmin ? "Akses penuh" : "Input transaksi dan lihat data";
 
   document.querySelectorAll("[data-main-tab='master']").forEach((button) => {
@@ -513,6 +608,34 @@ function applyRoleAccess() {
 
 function canManageStock() {
   return currentRole === "admin";
+}
+
+function loginLocalUser(email, password) {
+  const user = LOCAL_USERS.find((item) => (
+    item.email.toLowerCase() === email.toLowerCase() &&
+    item.password === password
+  ));
+
+  if (!user) return false;
+
+  currentSession = {
+    user: { email: user.email },
+    role: user.role,
+    provider: "local"
+  };
+  currentRole = user.role;
+  localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify(currentSession));
+  return true;
+}
+
+function loadLocalSession() {
+  try {
+    const session = JSON.parse(localStorage.getItem(LOCAL_SESSION_KEY));
+    if (!session || !["admin", "staff"].includes(session.role)) return null;
+    return session;
+  } catch {
+    return null;
+  }
 }
 
 async function loadSupabaseConfig() {

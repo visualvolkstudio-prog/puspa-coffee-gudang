@@ -90,6 +90,18 @@ textarea {
   color: var(--brand-dark);
 }
 
+.auth-hint {
+  border: 1px solid #eaded5;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  color: var(--muted);
+  background: #f7efe7;
+  font-size: 0.83rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
 .topbar {
   display: flex;
   align-items: center;
@@ -504,6 +516,15 @@ textarea {
   gap: 12px;
 }
 
+.transaction-form .split-fields {
+  grid-template-columns: 1fr;
+  gap: 0;
+}
+
+.transaction-form .quantity-row {
+  grid-template-columns: minmax(0, 1fr) minmax(72px, auto);
+}
+
 .primary-button,
 .ghost-button,
 .danger-button {
@@ -544,6 +565,31 @@ textarea {
   padding: 7px 10px;
   color: var(--danger);
   background: #fff1f0;
+}
+
+.backup-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.import-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 10px 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.import-button input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .search-field {
@@ -720,6 +766,10 @@ td {
   }
 
   .period-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .backup-actions {
     grid-template-columns: 1fr;
   }
 

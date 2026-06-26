@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=10">
+    <link rel="stylesheet" href="styles.css?v=11">
   </head>
   <body>
     <svg class="icon-sprite" aria-hidden="true">
@@ -83,10 +83,11 @@
           <h1>PUSPA COFFEE</h1>
           <p>Masuk untuk mengelola data gudang sesuai role akun.</p>
         </div>
+        <p class="auth-hint" id="authHint">Mode lokal: admin@puspa.local / admin123 atau staff@puspa.local / staff123</p>
 
         <label>
           Email
-          <input id="authEmail" name="email" type="email" autocomplete="email" placeholder="nama@email.com" required>
+          <input id="authEmail" name="email" type="email" autocomplete="email" placeholder="admin@puspa.local" required>
         </label>
 
         <label>
@@ -101,7 +102,7 @@
       </form>
     </section>
 
-    <header class="topbar" id="appHeader">
+    <header class="topbar app-hidden" id="appHeader">
       <div class="brand">
         <img src="assets/icon-192.png" alt="Logo Coffee Puspa">
         <div>
@@ -124,7 +125,7 @@
       </div>
     </header>
 
-    <main class="app-shell" id="appMain">
+    <main class="app-shell app-hidden" id="appMain">
 
       <!-- ═══════════════ DASHBOARD ═══════════════ -->
       <section class="tab-panel active" id="dashboardPanel">
@@ -299,6 +300,15 @@
               <svg class="icon"><use href="#icon-save"></use></svg>Simpan Nama Stock
             </button>
             <p class="form-message" id="stockMessage" role="status"></p>
+            <div class="backup-actions">
+              <button class="ghost-button with-icon" id="backupButton" type="button">
+                <svg class="icon"><use href="#icon-download"></use></svg>Backup Data
+              </button>
+              <label class="ghost-button import-button" for="restoreInput">
+                Import Data
+                <input id="restoreInput" type="file" accept="application/json,.json">
+              </label>
+            </div>
           </form>
 
           <section class="panel">
