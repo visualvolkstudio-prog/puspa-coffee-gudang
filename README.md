@@ -9,11 +9,11 @@ PWA sederhana untuk mencatat nama stock, jenis stock, barang masuk, barang kelua
 - Jenis per stock, seperti Green Bean, Gabah, atau Cherry
 - Tab info: Masuk Barang, Stock Gudang, Keluar Gudang, Sisa Stock
 - Export transaksi ke CSV dengan kolom Qty Masuk dan Qty Keluar terpisah
-- Login Supabase Auth dengan role `admin` dan `staff`
-- Login lokal sementara saat Supabase belum aktif
+- Login Firebase Auth dengan role `admin` dan `staff`
+- Login lokal sementara saat Firebase belum aktif
 - Backup dan import database lokal dengan file JSON
 - PWA dengan manifest, icon, dan service worker
-- Siap disambungkan ke Supabase
+- Tersambung ke Firebase Firestore
 
 ## Jalankan Lokal
 
@@ -37,7 +37,92 @@ PWA/service worker hanya aktif di `localhost` atau HTTPS. Kalau dibuka langsung 
 4. Pilih branch utama dan root folder.
 5. Simpan, lalu buka URL GitHub Pages yang diberikan.
 
-## Supabase
+## Firebase
+
+Firebase dipakai sebagai backend utama:
+
+- Authentication: login email/password
+- Firestore: database stock dan transaksi
+- `user_profiles`: role user
+
+Collection yang dipakai:
+
+```text
+user_profiles
+stock_items
+stock_transactions
+```
+
+Rules Firestore:
+
+```js
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/user_profiles/$(request.auth.uid))
+        && get(/databases/$(database)/documents/user_profiles/$(request.auth.uid)).data.role == "admin";
+    }
+
+    function isStaff() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/user_profiles/$(request.auth.uid))
+        && get(/databases/$(database)/documents/user_profiles/$(request.auth.uid)).data.role in ["admin", "staff"];
+    }
+
+    match /user_profiles/{userId} {
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow write: if isAdmin();
+    }
+
+    match /stock_items/{itemId} {
+      allow read: if isStaff();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /stock_transactions/{transactionId} {
+      allow read: if isStaff();
+      allow create: if isStaff();
+      allow update, delete: if isAdmin();
+    }
+  }
+}
+```
+
+Untuk admin pertama, buat user di Firebase Authentication, lalu buat document:
+
+```text
+Collection: user_profiles
+Document ID: UID user admin
+role: admin
+email: email admin
+```
+
+Pastikan domain Vercel masuk di Firebase Authentication > Settings > Authorized domains:
+
+```text
+puspa-coffee-gudang.vercel.app
+```
+
+### Role Login
+
+- `admin`: bisa input nama stock, hapus nama stock, hapus transaksi, backup/import, dan export CSV.
+- `staff`: bisa login, input transaksi, melihat stock, dan melihat riwayat.
+
+Kalau Firebase belum aktif, aplikasi memakai login lokal sementara:
+
+- Admin: `admin@puspa.local` / `admin123`
+- Staff: `staff@puspa.local` / `staff123`
+
+Mode lokal hanya untuk sementara karena datanya tersimpan di browser perangkat. Gunakan tombol `Backup Data` dan `Import Data` di `Pengaturan Stock` untuk menyimpan salinan database lokal.
+
+## Supabase Lama
 
 1. Buat project Supabase.
 2. Buka SQL Editor.
@@ -48,29 +133,7 @@ PWA/service worker hanya aktif di `localhost` atau HTTPS. Kalau dibuka langsung 
    - `SUPABASE_URL`
    - `SUPABASE_ANON_KEY`
 
-File `config.js` sengaja masuk `.gitignore` supaya key project tidak ikut commit.
-
-### Role Login
-
-- `admin`: bisa input nama stock, hapus nama stock, hapus transaksi, dan export CSV.
-- `staff`: bisa login, input transaksi, melihat stock, dan melihat riwayat.
-
-Kalau Supabase belum dikonfigurasi, aplikasi memakai login lokal sementara:
-
-- Admin: `admin@puspa.local` / `admin123`
-- Staff: `staff@puspa.local` / `staff123`
-
-Mode lokal hanya untuk sementara karena datanya tersimpan di browser perangkat. Gunakan tombol `Backup Data` dan `Import Data` di `Pengaturan Stock` untuk menyimpan salinan database lokal.
-
-Setelah menjalankan schema, buat user dari Supabase Dashboard > Authentication > Users. User baru otomatis menjadi `staff`. Untuk membuat admin pertama, jalankan SQL ini di Supabase SQL Editor:
-
-```sql
-update public.user_profiles
-set role = 'admin'
-where id = 'USER_ID_DARI_AUTH_USERS';
-```
-
-Ganti `USER_ID_DARI_AUTH_USERS` dengan ID user yang ada di halaman Authentication.
+File `config.js` sengaja masuk `.gitignore` supaya konfigurasi lokal tidak ikut commit.
 
 ## Struktur
 

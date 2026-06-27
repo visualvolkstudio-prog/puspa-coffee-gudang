@@ -1,6 +1,14 @@
 const ITEMS_KEY = "gudang-puspa-items";
 const TRANSACTIONS_KEY = "gudang-puspa-transactions";
 const LOCAL_SESSION_KEY = "gudang-puspa-local-session";
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCgmJIodD-FNaTJTYnzX0_Gk2_HdpnSU5A",
+  authDomain: "puspa-coffee-gudang.firebaseapp.com",
+  projectId: "puspa-coffee-gudang",
+  storageBucket: "puspa-coffee-gudang.firebasestorage.app",
+  messagingSenderId: "637850390770",
+  appId: "1:637850390770:web:97b0a29359a34c8a80806b"
+};
 const LOCAL_USERS = [
   { email: "admin@puspa.local", password: "admin123", role: "admin" },
   { email: "staff@puspa.local", password: "staff123", role: "staff" }
@@ -49,10 +57,17 @@ const restoreInput = document.querySelector("#restoreInput");
 
 let items = loadItems();
 let transactions = loadTransactions();
+let firebaseModules = null;
+let firebaseApp = null;
+let firebaseAuth = null;
+let firebaseDb = null;
+let firebaseItemUnsubscribe = null;
+let firebaseTransactionUnsubscribe = null;
 let supabaseClient = null;
 let syncTimer = null;
 let currentSession = null;
 let currentRole = "staff";
+let isFirebaseMode = false;
 let isSupabaseMode = false;
 let realtimeChannel = null;
 
@@ -60,7 +75,7 @@ migrateTransactionsToItems();
 dateInput.value = getToday();
 render();
 registerServiceWorker();
-initializeSupabase();
+initializeBackend();
 
 mainTabs.forEach((button) => {
   button.addEventListener("click", () => {
@@ -88,6 +103,19 @@ authForm.addEventListener("submit", async (event) => {
   const submitButton = authForm.querySelector("button[type='submit']");
   submitButton.disabled = true;
   submitButton.textContent = "Masuk...";
+
+  if (firebaseAuth) {
+    try {
+      await firebaseModules.signInWithEmailAndPassword(firebaseAuth, email, password);
+      authPasswordInput.value = "";
+    } catch (error) {
+      showMessage(authMessage, `Login Firebase gagal: ${formatAuthError(error)}`, "error");
+    } finally {
+      submitButton.disabled = false;
+      submitButton.innerHTML = '<svg class="icon"><use href="#icon-user"></use></svg>Masuk';
+    }
+    return;
+  }
 
   if (!supabaseClient) {
     const didLogin = loginLocalUser(email, password);
@@ -117,7 +145,9 @@ authForm.addEventListener("submit", async (event) => {
 });
 
 logoutButton.addEventListener("click", async () => {
-  if (supabaseClient) {
+  if (firebaseAuth) {
+    await firebaseModules.signOut(firebaseAuth);
+  } else if (supabaseClient) {
     await supabaseClient.auth.signOut();
   } else {
     localStorage.removeItem(LOCAL_SESSION_KEY);
@@ -162,7 +192,7 @@ stockForm.addEventListener("submit", async (event) => {
       await persistStockItem(existingItem);
       saveTransactions();
     } catch (error) {
-      showMessage(stockMessage, `Gagal menyimpan ke Supabase: ${error.message}`, "error");
+      showMessage(stockMessage, `Gagal menyimpan database: ${error.message}`, "error");
       return;
     }
 
@@ -186,7 +216,7 @@ stockForm.addEventListener("submit", async (event) => {
   } catch (error) {
     items = items.filter((item) => item.id !== newItem.id);
     saveItems();
-    showMessage(stockMessage, `Gagal menyimpan ke Supabase: ${error.message}`, "error");
+    showMessage(stockMessage, `Gagal menyimpan database: ${error.message}`, "error");
     render();
     return;
   }
@@ -244,7 +274,7 @@ transactionForm.addEventListener("submit", async (event) => {
   } catch (error) {
     transactions = transactions.filter((transaction) => transaction.id !== newTransaction.id);
     saveTransactions();
-    showMessage(formMessage, `Gagal menyimpan ke Supabase: ${error.message}`, "error");
+    showMessage(formMessage, `Gagal menyimpan database: ${error.message}`, "error");
     render();
     return;
   }
@@ -307,7 +337,7 @@ masterTable.addEventListener("click", async (event) => {
   try {
     await deleteStockItem(item.id);
   } catch (error) {
-    showMessage(stockMessage, `Gagal menghapus dari Supabase: ${error.message}`, "error");
+    showMessage(stockMessage, `Gagal menghapus dari database: ${error.message}`, "error");
     return;
   }
 
@@ -333,7 +363,7 @@ historyTable.addEventListener("click", async (event) => {
   try {
     await deleteTransaction(button.dataset.deleteId);
   } catch (error) {
-    showMessage(formMessage, `Gagal menghapus dari Supabase: ${error.message}`, "error");
+    showMessage(formMessage, `Gagal menghapus dari database: ${error.message}`, "error");
     return;
   }
 
@@ -449,7 +479,10 @@ async function importDatabaseBackup(event) {
     saveItems();
     saveTransactions();
 
-    if (supabaseClient && currentSession) {
+    if (firebaseDb && currentSession) {
+      await pushLocalDataToFirebase();
+      await syncFromFirebase();
+    } else if (supabaseClient && currentSession) {
       await pushLocalDataToSupabase();
       await syncFromSupabase();
     }
@@ -461,9 +494,235 @@ async function importDatabaseBackup(event) {
   }
 }
 
+async function initializeBackend() {
+  const didInitializeFirebase = await initializeFirebase();
+  if (didInitializeFirebase) return;
+
+  await initializeSupabase();
+}
+
+async function initializeFirebase() {
+  const config = loadFirebaseConfig();
+  if (!config) return false;
+
+  try {
+    const [appModule, authModule, firestoreModule] = await Promise.all([
+      import("https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js"),
+      import("https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js"),
+      import("https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js")
+    ]);
+
+    firebaseModules = {
+      initializeApp: appModule.initializeApp,
+      getAuth: authModule.getAuth,
+      onAuthStateChanged: authModule.onAuthStateChanged,
+      signInWithEmailAndPassword: authModule.signInWithEmailAndPassword,
+      signOut: authModule.signOut,
+      getFirestore: firestoreModule.getFirestore,
+      collection: firestoreModule.collection,
+      deleteDoc: firestoreModule.deleteDoc,
+      doc: firestoreModule.doc,
+      getDoc: firestoreModule.getDoc,
+      getDocs: firestoreModule.getDocs,
+      onSnapshot: firestoreModule.onSnapshot,
+      setDoc: firestoreModule.setDoc
+    };
+
+    firebaseApp = firebaseModules.initializeApp(config);
+    firebaseAuth = firebaseModules.getAuth(firebaseApp);
+    firebaseDb = firebaseModules.getFirestore(firebaseApp);
+    isFirebaseMode = true;
+    isSupabaseMode = false;
+
+    firebaseModules.onAuthStateChanged(firebaseAuth, (user) => {
+      if (!user) {
+        showLoginScreen();
+        return;
+      }
+
+      handleFirebaseUser(user).catch((error) => {
+        console.warn("Firebase auth session failed.", error);
+        showMessage(authMessage, `Gagal memuat akun Firebase: ${error.message}`, "error");
+      });
+    });
+
+    return true;
+  } catch (error) {
+    console.warn("Firebase unavailable, using fallback backend.", error);
+    firebaseModules = null;
+    firebaseApp = null;
+    firebaseAuth = null;
+    firebaseDb = null;
+    isFirebaseMode = false;
+    return false;
+  }
+}
+
+function loadFirebaseConfig() {
+  const config = window.PUSPA_FIREBASE_CONFIG || FIREBASE_CONFIG;
+  if (!hasFirebaseConfig(config)) return null;
+  return config;
+}
+
+function hasFirebaseConfig(config) {
+  return Boolean(
+    config?.apiKey &&
+    config?.authDomain &&
+    config?.projectId &&
+    config?.appId
+  );
+}
+
+async function handleFirebaseUser(user) {
+  currentSession = {
+    user: {
+      id: user.uid,
+      email: user.email
+    },
+    provider: "firebase"
+  };
+  currentRole = await loadFirebaseUserRole(user.uid);
+  showAppScreen();
+  await startFirebaseSync();
+}
+
+async function loadFirebaseUserRole(userId) {
+  if (!firebaseDb || !userId) return "staff";
+
+  const profileRef = firebaseModules.doc(firebaseDb, "user_profiles", userId);
+  const profileSnap = await firebaseModules.getDoc(profileRef);
+  const role = profileSnap.exists() ? profileSnap.data().role : "staff";
+  return role === "admin" ? "admin" : "staff";
+}
+
+async function startFirebaseSync() {
+  if (!firebaseDb || !currentSession) return;
+
+  const localItems = [...items];
+  const localTransactions = [...transactions];
+
+  await syncFromFirebase();
+  if (!items.length && localItems.length && canManageStock()) {
+    items = localItems;
+    transactions = localTransactions;
+    await pushLocalDataToFirebase();
+    await syncFromFirebase();
+  }
+  subscribeToFirebaseChanges();
+}
+
+async function syncFromFirebase() {
+  if (!firebaseDb) return;
+
+  const itemRows = await firebaseModules.getDocs(firebaseModules.collection(firebaseDb, "stock_items"));
+  items = itemRows.docs.map((row) => mapFirebaseStockItemFromDb(row.id, row.data()));
+
+  const transactionRows = await firebaseModules.getDocs(firebaseModules.collection(firebaseDb, "stock_transactions"));
+  transactions = transactionRows.docs
+    .map((row) => mapFirebaseTransactionFromDb(row.id, row.data()))
+    .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+
+  saveItems();
+  saveTransactions();
+  render();
+}
+
+function subscribeToFirebaseChanges() {
+  if (!firebaseDb) return;
+
+  firebaseItemUnsubscribe?.();
+  firebaseTransactionUnsubscribe?.();
+
+  firebaseItemUnsubscribe = firebaseModules.onSnapshot(
+    firebaseModules.collection(firebaseDb, "stock_items"),
+    (snapshot) => {
+      items = snapshot.docs.map((row) => mapFirebaseStockItemFromDb(row.id, row.data()));
+      saveItems();
+      render();
+    },
+    (error) => console.warn("Firebase stock sync failed.", error)
+  );
+
+  firebaseTransactionUnsubscribe = firebaseModules.onSnapshot(
+    firebaseModules.collection(firebaseDb, "stock_transactions"),
+    (snapshot) => {
+      transactions = snapshot.docs
+        .map((row) => mapFirebaseTransactionFromDb(row.id, row.data()))
+        .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+      saveTransactions();
+      render();
+    },
+    (error) => console.warn("Firebase transaction sync failed.", error)
+  );
+}
+
+async function pushLocalDataToFirebase() {
+  if (!firebaseDb) return;
+
+  await Promise.all(items.map((item) => firebaseModules.setDoc(
+    firebaseModules.doc(firebaseDb, "stock_items", item.id),
+    mapFirebaseStockItemToDb(item)
+  )));
+
+  await Promise.all(transactions.map((transaction) => firebaseModules.setDoc(
+    firebaseModules.doc(firebaseDb, "stock_transactions", transaction.id),
+    mapFirebaseTransactionToDb(transaction)
+  )));
+}
+
+function mapFirebaseStockItemToDb(item) {
+  return {
+    name: item.name,
+    category: item.category,
+    unit: item.unit,
+    createdAt: item.createdAt || new Date().toISOString()
+  };
+}
+
+function mapFirebaseStockItemFromDb(id, data) {
+  return {
+    id,
+    name: data.name || "",
+    category: data.category || "Umum",
+    unit: data.unit || "pcs",
+    createdAt: data.createdAt || new Date().toISOString()
+  };
+}
+
+function mapFirebaseTransactionToDb(transaction) {
+  return {
+    itemId: transaction.itemId,
+    itemName: transaction.itemName,
+    category: transaction.category,
+    type: transaction.type,
+    quantity: transaction.quantity,
+    unit: transaction.unit,
+    date: transaction.date,
+    note: transaction.note || "",
+    createdAt: transaction.createdAt || new Date().toISOString()
+  };
+}
+
+function mapFirebaseTransactionFromDb(id, data) {
+  const item = getItemById(data.itemId);
+  return {
+    id,
+    itemId: data.itemId,
+    itemName: item?.name || data.itemName || "",
+    category: item?.category || data.category || "",
+    type: data.type,
+    quantity: Number(data.quantity || 0),
+    unit: item?.unit || data.unit || "",
+    date: data.date,
+    note: data.note || "",
+    createdAt: data.createdAt || new Date().toISOString()
+  };
+}
+
 async function initializeSupabase() {
   const config = await loadSupabaseConfig();
   if (!config) {
+    isFirebaseMode = false;
     isSupabaseMode = false;
     const localSession = loadLocalSession();
     if (localSession) {
@@ -477,6 +736,7 @@ async function initializeSupabase() {
   }
 
   isSupabaseMode = true;
+  isFirebaseMode = false;
   supabaseClient = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
   logoutButton.classList.remove("app-hidden");
 
@@ -558,7 +818,9 @@ function showLoginScreen() {
   appMain.classList.add("app-hidden");
   authScreen.classList.remove("app-hidden");
   logoutButton.classList.add("app-hidden");
-  authHint.textContent = isSupabaseMode
+  authHint.textContent = isFirebaseMode
+    ? "Gunakan akun yang dibuat di Firebase Authentication."
+    : isSupabaseMode
     ? "Gunakan akun yang dibuat di Supabase Authentication."
     : "Mode lokal: admin@puspa.local / admin123 atau staff@puspa.local / staff123";
   applyRoleAccess();
@@ -575,7 +837,7 @@ function showAppScreen() {
 
 function applyRoleAccess() {
   const isAdmin = canManageStock();
-  const modeLabel = isSupabaseMode ? "" : " Lokal";
+  const modeLabel = isFirebaseMode ? " Firebase" : isSupabaseMode ? "" : " Lokal";
   roleBadge.textContent = `${isAdmin ? "Admin" : "Staff"}${modeLabel}`;
   roleBadge.title = isAdmin ? "Akses penuh" : "Input transaksi dan lihat data";
 
@@ -698,6 +960,14 @@ function scheduleSupabaseSync() {
 
 async function persistStockItem(item) {
   saveItems();
+  if (firebaseDb) {
+    await firebaseModules.setDoc(
+      firebaseModules.doc(firebaseDb, "stock_items", item.id),
+      mapFirebaseStockItemToDb(item)
+    );
+    return;
+  }
+
   if (!supabaseClient) return;
 
   const { error } = await supabaseClient.from("stock_items").upsert(mapStockItemToDb(item));
@@ -706,6 +976,14 @@ async function persistStockItem(item) {
 
 async function persistTransaction(transaction) {
   saveTransactions();
+  if (firebaseDb) {
+    await firebaseModules.setDoc(
+      firebaseModules.doc(firebaseDb, "stock_transactions", transaction.id),
+      mapFirebaseTransactionToDb(transaction)
+    );
+    return;
+  }
+
   if (!supabaseClient) return;
 
   const { error } = await supabaseClient.from("stock_transactions").upsert(mapTransactionToDb(transaction));
@@ -713,6 +991,15 @@ async function persistTransaction(transaction) {
 }
 
 async function deleteStockItem(itemId) {
+  if (firebaseDb) {
+    await firebaseModules.deleteDoc(firebaseModules.doc(firebaseDb, "stock_items", itemId));
+    const relatedTransactions = transactions.filter((transaction) => transaction.itemId === itemId);
+    await Promise.all(relatedTransactions.map((transaction) => firebaseModules.deleteDoc(
+      firebaseModules.doc(firebaseDb, "stock_transactions", transaction.id)
+    )));
+    return;
+  }
+
   if (!supabaseClient) return;
 
   const { error } = await supabaseClient.from("stock_items").delete().eq("id", itemId);
@@ -720,6 +1007,11 @@ async function deleteStockItem(itemId) {
 }
 
 async function deleteTransaction(transactionId) {
+  if (firebaseDb) {
+    await firebaseModules.deleteDoc(firebaseModules.doc(firebaseDb, "stock_transactions", transactionId));
+    return;
+  }
+
   if (!supabaseClient) return;
 
   const { error } = await supabaseClient.from("stock_transactions").delete().eq("id", transactionId);
@@ -1031,6 +1323,19 @@ function showMessage(element, message, type) {
     element.textContent = "";
     element.className = "form-message";
   }, 3200);
+}
+
+function formatAuthError(error) {
+  const messages = {
+    "auth/invalid-credential": "email atau password tidak cocok.",
+    "auth/invalid-email": "format email belum benar.",
+    "auth/too-many-requests": "terlalu banyak percobaan login. Coba lagi nanti.",
+    "auth/user-disabled": "akun ini sedang dinonaktifkan.",
+    "auth/user-not-found": "akun tidak ditemukan.",
+    "auth/wrong-password": "password salah."
+  };
+
+  return messages[error?.code] || error?.message || "terjadi kesalahan.";
 }
 
 function cleanText(value) {
