@@ -1392,6 +1392,29 @@ function createId() {
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
 
+  // Bersihkan cache dan service worker lama jika mendeteksi pembaruan versi (v27)
+  const CURRENT_VERSION = "v27";
+  if (localStorage.getItem("puspa-gudang-version") !== CURRENT_VERSION) {
+    localStorage.setItem("puspa-gudang-version", CURRENT_VERSION);
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
+      for (const registration of registrations) {
+        registration.unregister();
+      }
+    });
+    if (window.caches) {
+      caches.keys().then((names) => {
+        for (const name of names) {
+          caches.delete(name);
+        }
+      });
+    }
+    // Tunggu sebentar lalu reload halaman agar bersih
+    setTimeout(() => {
+      window.location.reload();
+    }, 300);
+    return;
+  }
+
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("sw.js").catch(() => {
       // PWA registration only works from localhost or HTTPS.
