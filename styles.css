@@ -76,6 +76,7 @@ textarea {
   padding: clamp(22px, 5vw, 30px);
   background: rgba(255, 250, 244, 0.97);
   box-shadow: var(--shadow);
+  animation: fadeInSlideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .auth-card img {
@@ -90,17 +91,7 @@ textarea {
   color: var(--brand-dark);
 }
 
-.auth-hint {
-  border: 1px solid #eaded5;
-  border-radius: 8px;
-  margin-bottom: 16px;
-  padding: 10px 12px;
-  color: var(--muted);
-  background: #f7efe7;
-  font-size: 0.83rem;
-  font-weight: 700;
-  line-height: 1.45;
-}
+
 
 .topbar {
   display: flex;
@@ -189,20 +180,7 @@ h2 {
   flex: 0 0 auto;
 }
 
-.role-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid rgba(255, 255, 255, 0.32);
-  border-radius: 999px;
-  min-height: 34px;
-  padding: 7px 12px;
-  color: #fff;
-  background: rgba(255, 255, 255, 0.12);
-  font-size: 0.78rem;
-  font-weight: 800;
-  white-space: nowrap;
-}
+
 
 .logout-button {
   display: inline-flex;
@@ -326,10 +304,22 @@ h2 {
   color: var(--amber);
 }
 
+@keyframes fadeInSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .tab-panel.active {
   display: flex;
   flex-direction: column;
   gap: 18px;
+  animation: fadeInSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .workspace-grid {
@@ -386,6 +376,7 @@ textarea {
   color: var(--ink);
   background: #fffdf9;
   outline: none;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
 }
 
 input:focus,
@@ -418,8 +409,20 @@ textarea {
   box-shadow: 0 14px 34px rgba(65, 38, 28, 0.18);
 }
 
+@keyframes dropdownFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .combo-list.active {
   display: grid;
+  animation: dropdownFadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .combo-option {
@@ -503,6 +506,13 @@ textarea {
   padding: 10px 14px;
   font-weight: 800;
   cursor: pointer;
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.1s ease, box-shadow 0.18s ease;
+}
+
+.primary-button:active,
+.ghost-button:active,
+.danger-button:active {
+  transform: scale(0.97);
 }
 
 .with-icon,
@@ -636,6 +646,14 @@ td {
   font-size: 0.92rem;
 }
 
+tbody tr {
+  transition: background-color 0.12s ease;
+}
+
+tbody tr:hover {
+  background-color: rgba(138, 71, 54, 0.04);
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
@@ -668,18 +686,38 @@ td {
   margin: 14px 0 0;
 }
 
+@keyframes messageIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .form-message {
   min-height: 20px;
   margin: 12px 0 0;
   font-weight: 800;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
 .form-message.success {
   color: var(--green);
+  opacity: 1;
+  transform: translateY(0);
+  animation: messageIn 0.2s ease forwards;
 }
 
 .form-message.error {
   color: var(--danger);
+  opacity: 1;
+  transform: translateY(0);
+  animation: messageIn 0.2s ease forwards;
 }
 
 @media (max-width: 920px) {

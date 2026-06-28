@@ -20,9 +20,7 @@ const authScreen = document.querySelector("#authScreen");
 const authForm = document.querySelector("#authForm");
 const authEmailInput = document.querySelector("#authEmail");
 const authPasswordInput = document.querySelector("#authPassword");
-const authHint = document.querySelector("#authHint");
 const authMessage = document.querySelector("#authMessage");
-const roleBadge = document.querySelector("#roleBadge");
 const logoutButton = document.querySelector("#logoutButton");
 const mainTabs = document.querySelectorAll("[data-main-tab]");
 const stockForm = document.querySelector("#stockForm");
@@ -818,11 +816,6 @@ function showLoginScreen() {
   appMain.classList.add("app-hidden");
   authScreen.classList.remove("app-hidden");
   logoutButton.classList.add("app-hidden");
-  authHint.textContent = isFirebaseMode
-    ? "Gunakan akun yang dibuat di Firebase Authentication."
-    : isSupabaseMode
-    ? "Gunakan akun yang dibuat di Supabase Authentication."
-    : "Mode lokal: admin@puspa.local / admin123 atau staff@puspa.local / staff123";
   applyRoleAccess();
 }
 
@@ -837,9 +830,6 @@ function showAppScreen() {
 
 function applyRoleAccess() {
   const isAdmin = canManageStock();
-  const modeLabel = isFirebaseMode ? " Firebase" : isSupabaseMode ? "" : " Lokal";
-  roleBadge.textContent = `${isAdmin ? "Admin" : "Staff"}${modeLabel}`;
-  roleBadge.title = isAdmin ? "Akses penuh" : "Input transaksi dan lihat data";
 
   document.querySelectorAll("[data-main-tab='master']").forEach((button) => {
     button.classList.toggle("role-locked", !isAdmin);
