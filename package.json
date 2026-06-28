@@ -4,7 +4,7 @@
   "description": "PWA sederhana untuk mencatat nama stock, jenis stock, barang masuk, barang keluar, dan sisa stock Gudang Puspa Coffee.",
   "main": "app.js",
   "scripts": {
-    "build": "mkdir -p assets/bootstrap-icons && cp -r node_modules/bootstrap-icons/font assets/bootstrap-icons/",
+    "copy-icons": "mkdir -p assets/bootstrap-icons && cp -r node_modules/bootstrap-icons/font assets/bootstrap-icons/",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
