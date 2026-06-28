@@ -590,30 +590,7 @@ textarea {
   background: #fff1f0;
 }
 
-.backup-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 12px;
-}
 
-.import-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 42px;
-  padding: 10px 14px;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.import-button input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
-}
 
 .search-field {
   position: relative;
@@ -828,9 +805,7 @@ tbody tr:hover {
     grid-template-columns: 1fr;
   }
 
-  .backup-actions {
-    grid-template-columns: 1fr;
-  }
+
 
   .tab-button {
     flex: 1 1 auto;

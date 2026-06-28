@@ -1,7 +1,7 @@
-const CACHE_NAME = "puspa-gudang-v30";
+const CACHE_NAME = "puspa-gudang-v31";
 const APP_SHELL = [
   "./",
-  "./styles.css?v=14",
+  "./styles.css?v=15",
   "./app.js",
   "./manifest.webmanifest",
   "./assets/logo.jpeg",

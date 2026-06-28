@@ -50,8 +50,7 @@ const stockEmpty = document.querySelector("#stockEmpty");
 const historyEmpty = document.querySelector("#historyEmpty");
 const masterEmpty = document.querySelector("#masterEmpty");
 const exportButton = document.querySelector("#exportButton");
-const backupButton = document.querySelector("#backupButton");
-const restoreInput = document.querySelector("#restoreInput");
+
 
 let items = loadItems();
 let transactions = loadTransactions();
@@ -310,8 +309,7 @@ document.addEventListener("click", (event) => {
 searchInput.addEventListener("change", renderStockInfoTable);
 masterStockFilter.addEventListener("change", renderMasterTable);
 masterSearchInput.addEventListener("input", renderMasterTable);
-backupButton.addEventListener("click", exportDatabaseBackup);
-restoreInput.addEventListener("change", importDatabaseBackup);
+
 
 masterTable.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-delete-item-id]");
@@ -431,66 +429,7 @@ function saveTransactions() {
   localStorage.setItem(TRANSACTIONS_KEY, JSON.stringify(transactions));
 }
 
-function exportDatabaseBackup() {
-  if (!canManageStock()) {
-    showMessage(stockMessage, "Hanya admin yang bisa backup data.", "error");
-    return;
-  }
 
-  const payload = {
-    app: "puspa-coffee-gudang",
-    version: 1,
-    exportedAt: new Date().toISOString(),
-    items,
-    transactions
-  };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `backup-puspa-coffee-${getToday()}.json`;
-  link.click();
-  URL.revokeObjectURL(url);
-  showMessage(stockMessage, "Backup data berhasil dibuat.", "success");
-}
-
-async function importDatabaseBackup(event) {
-  const file = event.target.files?.[0];
-  event.target.value = "";
-  if (!file) return;
-
-  if (!canManageStock()) {
-    showMessage(stockMessage, "Hanya admin yang bisa import data.", "error");
-    return;
-  }
-
-  try {
-    const payload = JSON.parse(await file.text());
-    if (!Array.isArray(payload.items) || !Array.isArray(payload.transactions)) {
-      throw new Error("Format backup tidak sesuai.");
-    }
-
-    if (!confirm("Import data akan mengganti data stock dan transaksi saat ini. Lanjutkan?")) return;
-
-    items = payload.items;
-    transactions = payload.transactions;
-    saveItems();
-    saveTransactions();
-
-    if (firebaseDb && currentSession) {
-      await pushLocalDataToFirebase();
-      await syncFromFirebase();
-    } else if (supabaseClient && currentSession) {
-      await pushLocalDataToSupabase();
-      await syncFromSupabase();
-    }
-
-    render();
-    showMessage(stockMessage, "Import data berhasil.", "success");
-  } catch (error) {
-    showMessage(stockMessage, `Import gagal: ${error.message}`, "error");
-  }
-}
 
 async function initializeBackend() {
   const didInitializeFirebase = await initializeFirebase();
@@ -1393,7 +1332,7 @@ function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
 
   // Bersihkan cache dan service worker lama jika mendeteksi pembaruan versi (v27)
-  const CURRENT_VERSION = "v30";
+  const CURRENT_VERSION = "v31";
   if (localStorage.getItem("puspa-gudang-version") !== CURRENT_VERSION) {
     localStorage.setItem("puspa-gudang-version", CURRENT_VERSION);
     navigator.serviceWorker.getRegistrations().then((registrations) => {
