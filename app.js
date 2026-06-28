@@ -1393,7 +1393,7 @@ function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
 
   // Bersihkan cache dan service worker lama jika mendeteksi pembaruan versi (v27)
-  const CURRENT_VERSION = "v27";
+  const CURRENT_VERSION = "v28";
   if (localStorage.getItem("puspa-gudang-version") !== CURRENT_VERSION) {
     localStorage.setItem("puspa-gudang-version", CURRENT_VERSION);
     navigator.serviceWorker.getRegistrations().then((registrations) => {

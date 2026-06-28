@@ -2,7 +2,7 @@
   "name": "Gudang Puspa Coffee",
   "short_name": "Puspa Gudang",
   "description": "Aplikasi PWA untuk mencatat stock masuk, keluar, dan sisa stock Gudang Puspa Coffee.",
-  "start_url": "./index.html",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f4eee7",
