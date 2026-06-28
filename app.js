@@ -242,7 +242,7 @@ transactionForm.addEventListener("submit", async (event) => {
   const date = dateInput.value;
   const note = cleanText(noteInput.value);
 
-  if (!item || !date || !Number.isInteger(quantity) || quantity <= 0) {
+  if (!item || !date || isNaN(quantity) || quantity <= 0) {
     showMessage(formMessage, "Pilih nama stock, tanggal, dan jumlah dengan benar.", "error");
     return;
   }
@@ -1292,6 +1292,13 @@ function getStockMap() {
       item.stock -= transaction.quantity;
     }
   });
+
+  const round = (num) => Math.round((num + Number.EPSILON) * 1000) / 1000;
+  for (const item of map.values()) {
+    item.inQty = round(item.inQty);
+    item.outQty = round(item.outQty);
+    item.stock = round(item.stock);
+  }
 
   return map;
 }
