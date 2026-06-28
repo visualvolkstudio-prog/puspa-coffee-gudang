@@ -110,7 +110,7 @@ authForm.addEventListener("submit", async (event) => {
       showMessage(authMessage, `Login Firebase gagal: ${formatAuthError(error)}`, "error");
     } finally {
       submitButton.disabled = false;
-      submitButton.innerHTML = '<svg class="icon"><use href="#icon-user"></use></svg>Masuk';
+      submitButton.innerHTML = '<i class="bi bi-person icon"></i>Masuk';
     }
     return;
   }
@@ -118,7 +118,7 @@ authForm.addEventListener("submit", async (event) => {
   if (!supabaseClient) {
     const didLogin = loginLocalUser(email, password);
     submitButton.disabled = false;
-    submitButton.innerHTML = '<svg class="icon"><use href="#icon-user"></use></svg>Masuk';
+    submitButton.innerHTML = '<i class="bi bi-person icon"></i>Masuk';
 
     if (!didLogin) {
       showMessage(authMessage, "Login lokal gagal. Cek email dan password.", "error");
@@ -132,7 +132,7 @@ authForm.addEventListener("submit", async (event) => {
 
   const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
   submitButton.disabled = false;
-  submitButton.innerHTML = '<svg class="icon"><use href="#icon-user"></use></svg>Masuk';
+  submitButton.innerHTML = '<i class="bi bi-person icon"></i>Masuk';
   if (error) {
     showMessage(authMessage, `Login gagal: ${error.message}`, "error");
     return;
@@ -1367,7 +1367,7 @@ function strong(value) {
 }
 
 function trashIcon() {
-  return '<svg class="icon" aria-hidden="true"><use href="#icon-trash"></use></svg>';
+  return '<i class="bi bi-trash icon" aria-hidden="true"></i>';
 }
 
 function escapeHtmlAllowMarkup(value) {
@@ -1393,7 +1393,7 @@ function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
 
   // Bersihkan cache dan service worker lama jika mendeteksi pembaruan versi (v27)
-  const CURRENT_VERSION = "v29";
+  const CURRENT_VERSION = "v30";
   if (localStorage.getItem("puspa-gudang-version") !== CURRENT_VERSION) {
     localStorage.setItem("puspa-gudang-version", CURRENT_VERSION);
     navigator.serviceWorker.getRegistrations().then((registrations) => {

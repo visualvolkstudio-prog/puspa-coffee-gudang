@@ -1,0 +1,25 @@
+{
+  "name": "gudangpuspacoffee",
+  "version": "1.0.0",
+  "description": "PWA sederhana untuk mencatat nama stock, jenis stock, barang masuk, barang keluar, dan sisa stock Gudang Puspa Coffee.",
+  "main": "app.js",
+  "scripts": {
+    "build": "mkdir -p assets/bootstrap-icons && cp -r node_modules/bootstrap-icons/font assets/bootstrap-icons/",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/visualvolkstudio-prog/puspa-coffee-gudang.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/visualvolkstudio-prog/puspa-coffee-gudang/issues"
+  },
+  "homepage": "https://github.com/visualvolkstudio-prog/puspa-coffee-gudang#readme",
+  "dependencies": {
+    "bootstrap-icons": "^1.13.1"
+  }
+}

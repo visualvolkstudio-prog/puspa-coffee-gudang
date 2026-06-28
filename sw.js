@@ -1,4 +1,4 @@
-const CACHE_NAME = "puspa-gudang-v29";
+const CACHE_NAME = "puspa-gudang-v30";
 const APP_SHELL = [
   "./",
   "./styles.css?v=14",
@@ -6,7 +6,10 @@ const APP_SHELL = [
   "./manifest.webmanifest",
   "./assets/logo.jpeg",
   "./assets/icon-192.png",
-  "./assets/icon-512.png"
+  "./assets/icon-512.png",
+  "./assets/bootstrap-icons/font/bootstrap-icons.min.css",
+  "./assets/bootstrap-icons/font/fonts/bootstrap-icons.woff2",
+  "./assets/bootstrap-icons/font/fonts/bootstrap-icons.woff"
 ];
 
 self.addEventListener("install", (event) => {
